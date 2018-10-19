@@ -15,6 +15,8 @@
  */
 package org.wildfly.swarm.infinispan.runtime;
 
+import static org.wildfly.swarm.infinispan.InfinispanMessages.MESSAGES;
+
 import javax.enterprise.context.ApplicationScoped;
 import javax.enterprise.context.Dependent;
 import javax.enterprise.inject.Instance;
@@ -23,16 +25,16 @@ import javax.inject.Inject;
 
 import org.jboss.msc.service.ServiceActivator;
 import org.wildfly.swarm.config.EJB3;
+import org.wildfly.swarm.config.JGroups;
 import org.wildfly.swarm.config.JPA;
 import org.wildfly.swarm.config.Undertow;
+import org.wildfly.swarm.config.infinispan.Mode;
 import org.wildfly.swarm.config.infinispan.cache_container.EvictionComponent;
 import org.wildfly.swarm.config.infinispan.cache_container.LockingComponent;
 import org.wildfly.swarm.config.infinispan.cache_container.TransactionComponent;
 import org.wildfly.swarm.infinispan.InfinispanFraction;
 import org.wildfly.swarm.spi.api.Customizer;
 import org.wildfly.swarm.spi.runtime.annotations.Post;
-
-import static org.wildfly.swarm.infinispan.InfinispanMessages.MESSAGES;
 
 /**
  * @author Bob McWhirter
@@ -43,10 +45,15 @@ public class InfinispanCustomizer implements Customizer {
 
     private static final String DEFAULT = "default";
 
+    private static final String DIST = "dist";
+
     private static final String PASSIVATION = "passivation";
 
     @Inject
     private InfinispanFraction fraction;
+
+    @Inject
+    private Instance<JGroups> jgroups;
 
     @Inject
     private Instance<Undertow> undertow;
@@ -59,9 +66,75 @@ public class InfinispanCustomizer implements Customizer {
 
     @Override
     public void customize() {
+
         if (this.fraction.isDefaultFraction()) {
-            localCustomization();
+            if (!this.jgroups.isUnsatisfied()) {
+                clusteredCustomization();
+            } else {
+                localCustomization();
+            }
         }
+
+    }
+
+    private void clusteredCustomization() {
+        this.fraction.cacheContainer("server",
+                cc -> cc.defaultCache(DEFAULT)
+                        .alias("singleton")
+                        .alias("cluster")
+                        .module("org.wildfly.clustering.server")
+                        .jgroupsTransport(t -> t.lockTimeout(60000L))
+                        .replicatedCache(DEFAULT,
+                                c -> c.mode(Mode.SYNC)
+                                        .transactionComponent(t -> t.mode(TransactionComponent.Mode.BATCH))));
+        if (!this.undertow.isUnsatisfied()) {
+            this.fraction.cacheContainer("web",
+                    cc -> cc.defaultCache(DIST)
+                            .module("org.wildfly.clustering.web.infinispan")
+                            .statisticsEnabled(true)
+                            .jgroupsTransport(t -> t.lockTimeout(60000L))
+                            .distributedCache(DIST,
+                                    c -> c.mode(Mode.ASYNC)
+                                            .statisticsEnabled(true)
+                                            .l1Lifespan(0L)
+                                            .owners(2)
+                                            .lockingComponent(lc -> lc.isolation(LockingComponent.Isolation.REPEATABLE_READ))
+                                            .transactionComponent(tc -> tc.mode(TransactionComponent.Mode.BATCH))
+                                            .fileStore()));
+        }
+
+        if (!this.ejb.isUnsatisfied()) {
+            this.fraction.cacheContainer("ejb",
+                    cc -> cc.defaultCache(DIST)
+                            .alias("sfsb")
+                            .module("org.wildfly.clustering.ejb.infinispan")
+                            .jgroupsTransport(t -> t.lockTimeout(60000L))
+                            .distributedCache(DIST,
+                                    c -> c.mode(Mode.ASYNC)
+                                            .l1Lifespan(0L)
+                                            .owners(2)
+                                            .lockingComponent(lc -> lc.isolation(LockingComponent.Isolation.REPEATABLE_READ))
+                                            .transactionComponent(t -> t.mode(TransactionComponent.Mode.BATCH))
+                                            .fileStore()));
+
+        }
+
+        if (!this.jpa.isUnsatisfied()) {
+            this.fraction.cacheContainer("hibernate",
+                    cc -> cc.defaultCache("local-query")
+                            .module("org.hibernate.infinispan")
+                            .jgroupsTransport(t -> t.lockTimeout(60000L))
+                            .localCache("local-query",
+                                    c -> c.evictionComponent(ec -> ec.maxEntries(10000L).strategy(EvictionComponent.Strategy.LRU))
+                                            .expirationComponent(ec -> ec.maxIdle(100000L)))
+                            .invalidationCache("entity",
+                                    c -> c.mode(Mode.SYNC)
+                                            .transactionComponent(tc -> tc.mode(TransactionComponent.Mode.NON_XA))
+                                            .evictionComponent(ec -> ec.maxEntries(10000L).strategy(EvictionComponent.Strategy.LRU))
+                                            .expirationComponent(ec -> ec.maxIdle(100000L)))
+                            .replicatedCache("timestamps", c -> c.mode(Mode.ASYNC)));
+        }
+
     }
 
     private void localCustomization() {

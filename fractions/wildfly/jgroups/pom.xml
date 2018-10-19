@@ -25,6 +25,9 @@
   <properties>
     <swarm.fraction.stability>stable</swarm.fraction.stability>
     <swarm.fraction.tags>JavaEE</swarm.fraction.tags>
+    <checkstyle.skip>true</checkstyle.skip>
+    <version.org.jgroups>3.6.13.Final</version.org.jgroups>
+    <version.org.openshift.ping>1.0.0.Beta7-swarm-1</version.org.openshift.ping>
   </properties>
 
   <build>

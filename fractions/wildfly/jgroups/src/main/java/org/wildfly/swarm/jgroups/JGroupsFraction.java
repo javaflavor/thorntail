@@ -53,27 +53,48 @@ public class JGroupsFraction extends JGroups<JGroupsFraction> implements Fractio
 
     public JGroupsFraction applyMulticastDefaults() {
         return defaultChannel("swarm-jgroups")
-                .stack("udp", (s) -> {
-                    s.transport("UDP", (t) -> {
-                        t.socketBinding("jgroups-udp");
-                    });
-                    s.protocol("PING");
-                    s.protocol("MERGE3");
-                    s.protocol("FD_SOCK");
-                    s.protocol("FD_ALL");
-                    s.protocol("VERIFY_SUSPECT");
-                    s.protocol("pbcast.NAKACK2");
-                    s.protocol("UNICAST3");
-                    s.protocol("pbcast.STABLE");
-                    s.protocol("pbcast.GMS");
-                    s.protocol("UFC");
-                    s.protocol("MFC");
-                    s.protocol("FRAG2");
-                    s.protocol("RSVP");
-                })
-                .channel("swarm-jgroups", (c) -> {
-                    c.stack("udp");
-                });
+				.stack("tcp", (s) -> {
+					s.transport("TCP", (t) -> {
+						t.socketBinding("jgroups-tcp");
+					});
+					s.protocol("openshift.DNS_PING", p -> {
+						p.socketBinding("jgroups-mping");
+					});
+					s.protocol("MERGE3");
+					s.protocol("FD_SOCK");
+					s.protocol("FD_ALL");
+					s.protocol("VERIFY_SUSPECT");
+					s.protocol("pbcast.NAKACK2");
+					s.protocol("UNICAST3");
+					s.protocol("pbcast.STABLE");
+					s.protocol("pbcast.GMS");
+					s.protocol("UFC");
+					s.protocol("MFC");
+					s.protocol("FRAG2");
+				}).channel("swarm-jgroups", (c) -> {
+					c.stack("tcp");
+				});
+//              .stack("udp", (s) -> {
+//              s.transport("UDP", (t) -> {
+//                  t.socketBinding("jgroups-udp");
+//              });
+//              s.protocol("PING");
+//              s.protocol("MERGE3");
+//              s.protocol("FD_SOCK");
+//              s.protocol("FD_ALL");
+//              s.protocol("VERIFY_SUSPECT");
+//              s.protocol("pbcast.NAKACK2");
+//              s.protocol("UNICAST3");
+//              s.protocol("pbcast.STABLE");
+//              s.protocol("pbcast.GMS");
+//              s.protocol("UFC");
+//              s.protocol("MFC");
+//              s.protocol("FRAG2");
+//              s.protocol("RSVP");
+//          })
+//          .channel("swarm-jgroups", (c) -> {
+//              c.stack("udp");
+//          });
     }
 
     public JGroupsFraction defaultMulticastAddress(String defaultMulticastAddress) {
